@@ -1,0 +1,121 @@
+package websocket
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"sync"
+	"testing"
+	"time"
+)
+
+type fakeDialer struct{ conn *fakeConn }
+
+func (d fakeDialer) DialContext(context.Context, string, http.Header) (Connection, *http.Response, error) {
+	return d.conn, nil, nil
+}
+
+type fakeRead struct {
+	data []byte
+	err  error
+}
+type fakeConn struct {
+	mu     sync.Mutex
+	reads  chan fakeRead
+	writes [][]byte
+	closed chan struct{}
+	once   sync.Once
+	pong   func(string) error
+}
+
+func newFakeConn() *fakeConn {
+	return &fakeConn{reads: make(chan fakeRead, 8), closed: make(chan struct{})}
+}
+func (c *fakeConn) ReadMessage() (int, []byte, error) {
+	select {
+	case r := <-c.reads:
+		return 1, r.data, r.err
+	case <-c.closed:
+		return 0, nil, errors.New("closed")
+	}
+}
+func (c *fakeConn) WriteMessage(_ int, b []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.writes = append(c.writes, append([]byte(nil), b...))
+	return nil
+}
+func (c *fakeConn) WriteControl(int, []byte, time.Time) error { return nil }
+func (c *fakeConn) SetReadDeadline(time.Time) error           { return nil }
+func (c *fakeConn) SetPongHandler(h func(string) error)       { c.pong = h }
+func (c *fakeConn) Close() error                              { c.once.Do(func() { close(c.closed) }); return nil }
+
+func TestClientLifecycleAndRouting(t *testing.T) {
+	t.Parallel()
+	conn := newFakeConn()
+	c, err := NewClient(&ClientOption{EndpointURL: "ws://test", Dialer: fakeDialer{conn}, QueueSize: 4, PingPeriod: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err = c.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Subscribe(ctx, []Channel{{Name: ChannelHeartbeat}}, []string{"BTC-USD"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Unsubscribe(ctx, []Channel{{Name: ChannelHeartbeat}}, []string{"BTC-USD"}); err != nil {
+		t.Fatal(err)
+	}
+	conn.mu.Lock()
+	writes := len(conn.writes)
+	conn.mu.Unlock()
+	if writes != 2 {
+		t.Fatalf("writes=%d", writes)
+	}
+	conn.reads <- fakeRead{data: []byte(`{"type":"heartbeat","product_id":"BTC-USD","sequence":1,"last_trade_id":2,"time":"x"}`)}
+	select {
+	case e := <-c.Events():
+		if _, ok := e.Value.(*Heartbeat); !ok {
+			t.Fatalf("event=%T", e.Value)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("event timeout")
+	}
+	if err = c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestContextCancellationClosesConnection(t *testing.T) {
+	t.Parallel()
+	conn := newFakeConn()
+	c, _ := NewClient(&ClientOption{EndpointURL: "ws://test", Dialer: fakeDialer{conn}, QueueSize: 1, PingPeriod: 0})
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := c.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case <-conn.closed:
+	case <-time.After(time.Second):
+		t.Fatal("connection was not closed")
+	}
+	_ = c.Close()
+}
+
+func TestNilDialerAndSubscriptionValidation(t *testing.T) {
+	t.Parallel()
+	if _, err := NewClient(&ClientOption{EndpointURL: "x"}); err == nil {
+		t.Fatal("expected nil dialer")
+	}
+	conn := newFakeConn()
+	c, _ := NewClient(&ClientOption{EndpointURL: "x", Dialer: fakeDialer{conn}})
+	if err := c.Subscribe(context.Background(), nil, nil); err == nil {
+		t.Fatal("expected channels validation")
+	}
+}
