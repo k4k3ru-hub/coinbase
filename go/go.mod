@@ -4,6 +4,4 @@ go 1.25.4
 
 require github.com/gorilla/websocket v1.5.3
 
-require github.com/k4k3ru-hub/cli/go v0.0.0
-
-replace github.com/k4k3ru-hub/cli/go => ../../cli/go
+require github.com/k4k3ru-hub/cli/go v0.0.0-20260817151915-a1c30890d1b3
