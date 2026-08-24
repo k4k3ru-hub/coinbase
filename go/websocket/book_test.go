@@ -35,6 +35,38 @@ func TestDecodeAndBook(t *testing.T) {
 	}
 }
 
+func TestBookManagerBestBidOffer(t *testing.T) {
+	t.Parallel()
+	m := NewBookManager()
+	snapshot := Event{Value: &Level2Snapshot{
+		ProductID: "BTC-USD",
+		Bids:      [][]string{{"100", "1"}, {"101", "2"}},
+		Asks:      [][]string{{"103", "3"}, {"102", "4"}},
+	}}
+	if err := m.Apply(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	bbo, ok := m.BestBidOffer("BTC-USD")
+	if !ok || bbo.BidPrice != "101" || bbo.BidSize != "2" || bbo.AskPrice != "102" || bbo.AskSize != "4" {
+		t.Fatalf("unexpected initial BBO: %+v available=%t", bbo, ok)
+	}
+	update := Event{Value: &Level2Update{
+		ProductID: "BTC-USD",
+		Changes:   [][]string{{"buy", "101", "0"}, {"sell", "99", "5"}},
+	}}
+	if err := m.Apply(update); err != nil {
+		t.Fatal(err)
+	}
+	bbo, ok = m.BestBidOffer("BTC-USD")
+	if !ok || bbo.BidPrice != "100" || bbo.BidSize != "1" || bbo.AskPrice != "99" || bbo.AskSize != "5" {
+		t.Fatalf("unexpected updated BBO: %+v available=%t", bbo, ok)
+	}
+	m.Reset()
+	if _, ok := m.BestBidOffer("BTC-USD"); ok {
+		t.Fatal("reset BBO remained available")
+	}
+}
+
 func TestDecodeRouting(t *testing.T) {
 	t.Parallel()
 	cases := map[string]any{"heartbeat": &Heartbeat{}, "status": &Status{}, "ticker": &Ticker{}, "subscriptions": &Subscriptions{}, "error": &ErrorMessage{}, "match": &Match{}, "open": &FullEvent{}}

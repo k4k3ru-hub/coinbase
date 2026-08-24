@@ -23,6 +23,10 @@ type Connection interface {
 	Close() error
 }
 
+type writeDeadlineSetter interface {
+	SetWriteDeadline(time.Time) error
+}
+
 // Dialer creates WebSocket connections.
 type Dialer interface {
 	DialContext(context.Context, string, http.Header) (Connection, *http.Response, error)
@@ -49,6 +53,7 @@ type Client struct {
 	conn    Connection
 	events  chan Event
 	errs    chan error
+	ends    chan error
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 	closed  bool
@@ -84,7 +89,7 @@ func NewClient(option *ClientOption) (*Client, error) {
 	if o.QueueSize < 0 {
 		return nil, fmt.Errorf("failed to create coinbase exchange websocket client: queue_size=out_of_range")
 	}
-	c := &Client{option: o, events: make(chan Event, o.QueueSize), errs: make(chan error, 1)}
+	c := &Client{option: o, events: make(chan Event, o.QueueSize), errs: make(chan error, 1), ends: make(chan error, 1)}
 	c.books = NewBookManager()
 	return c, nil
 }
@@ -177,8 +182,11 @@ func (c *Client) send(ctx context.Context, typ string, channels []Channel, ids [
 	}
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = conn.SetReadDeadline(deadline)
+	deadline, _ := ctx.Deadline()
+	if setter, ok := conn.(writeDeadlineSetter); ok {
+		if err := setter.SetWriteDeadline(deadline); err != nil {
+			return fmt.Errorf("failed to %s coinbase exchange websocket: failed to set write deadline: %w", typ, err)
+		}
 	}
 	if err := conn.WriteMessage(gorilla.TextMessage, payload); err != nil {
 		return fmt.Errorf("failed to %s coinbase exchange websocket: %w", typ, err)
@@ -206,6 +214,20 @@ func (c *Client) Errors() <-chan error {
 		return nil
 	}
 	return c.errs
+}
+
+// SessionEnds returns reliable terminal errors for disconnected sessions.
+//
+// Returns:
+//   - Session termination error stream.
+//
+// Version:
+//   - 2026-08-24: Added.
+func (c *Client) SessionEnds() <-chan error {
+	if c == nil {
+		return nil
+	}
+	return c.ends
 }
 
 // Books returns the generation-aware L2 book manager.
@@ -294,7 +316,7 @@ func (c *Client) pingLoop(ctx context.Context, conn Connection) {
 			err := conn.WriteControl(gorilla.PingMessage, nil, time.Now().Add(c.option.WriteTimeout))
 			c.writeMu.Unlock()
 			if err != nil {
-				c.report(fmt.Errorf("failed to ping coinbase exchange websocket: %w", err))
+				c.sessionEnded(conn, fmt.Errorf("failed to ping coinbase exchange websocket: %w", err))
 				return
 			}
 		}
@@ -302,15 +324,18 @@ func (c *Client) pingLoop(ctx context.Context, conn Connection) {
 }
 func (c *Client) sessionEnded(conn Connection, err error) {
 	c.mu.Lock()
-	if c.conn == conn {
-		c.conn = nil
-		if c.cancel != nil {
-			c.cancel()
-		}
+	if c.conn != conn {
+		c.mu.Unlock()
+		return
+	}
+	c.conn = nil
+	if c.cancel != nil {
+		c.cancel()
 	}
 	c.mu.Unlock()
+	_ = conn.Close()
 	c.books.Reset()
-	c.report(err)
+	c.ends <- err
 }
 func (c *Client) report(err error) {
 	select {

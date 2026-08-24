@@ -20,12 +20,13 @@ type fakeRead struct {
 	err  error
 }
 type fakeConn struct {
-	mu     sync.Mutex
-	reads  chan fakeRead
-	writes [][]byte
-	closed chan struct{}
-	once   sync.Once
-	pong   func(string) error
+	mu            sync.Mutex
+	reads         chan fakeRead
+	writes        [][]byte
+	closed        chan struct{}
+	once          sync.Once
+	pong          func(string) error
+	writeDeadline time.Time
 }
 
 func newFakeConn() *fakeConn {
@@ -47,8 +48,14 @@ func (c *fakeConn) WriteMessage(_ int, b []byte) error {
 }
 func (c *fakeConn) WriteControl(int, []byte, time.Time) error { return nil }
 func (c *fakeConn) SetReadDeadline(time.Time) error           { return nil }
-func (c *fakeConn) SetPongHandler(h func(string) error)       { c.pong = h }
-func (c *fakeConn) Close() error                              { c.once.Do(func() { close(c.closed) }); return nil }
+func (c *fakeConn) SetWriteDeadline(deadline time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.writeDeadline = deadline
+	return nil
+}
+func (c *fakeConn) SetPongHandler(h func(string) error) { c.pong = h }
+func (c *fakeConn) Close() error                        { c.once.Do(func() { close(c.closed) }); return nil }
 
 func TestClientLifecycleAndRouting(t *testing.T) {
 	t.Parallel()
@@ -106,6 +113,58 @@ func TestContextCancellationClosesConnection(t *testing.T) {
 		t.Fatal("connection was not closed")
 	}
 	_ = c.Close()
+}
+
+func TestSessionEndRemainsObservableWhenErrorQueueIsFull(t *testing.T) {
+	t.Parallel()
+	conn := newFakeConn()
+	c, err := NewClient(&ClientOption{EndpointURL: "ws://test", Dialer: fakeDialer{conn}, QueueSize: 1, PingPeriod: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	c.report(errors.New("non-terminal decode error"))
+	conn.reads <- fakeRead{err: errors.New("connection lost")}
+	select {
+	case sessionErr := <-c.SessionEnds():
+		if sessionErr == nil {
+			t.Fatal("expected session termination error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("session termination was not reported")
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSubscribeUsesContextWriteDeadline(t *testing.T) {
+	t.Parallel()
+	conn := newFakeConn()
+	c, err := NewClient(&ClientOption{EndpointURL: "ws://test", Dialer: fakeDialer{conn}, QueueSize: 1, PingPeriod: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	if err := c.Subscribe(ctx, []Channel{{Name: ChannelHeartbeat}}, []string{"BTC-USD"}); err != nil {
+		t.Fatal(err)
+	}
+	conn.mu.Lock()
+	got := conn.writeDeadline
+	conn.mu.Unlock()
+	if !got.Equal(deadline) {
+		t.Fatalf("write deadline = %s, want %s", got, deadline)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestNilDialerAndSubscriptionValidation(t *testing.T) {
