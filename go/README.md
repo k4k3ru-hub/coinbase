@@ -4,7 +4,25 @@ Go client for **Coinbase Exchange API** public market data. The Exchange package
 
 Module path: `github.com/k4k3ru-hub/coinbase/go`
 
-The `intx` subtree separately implements Coinbase International Exchange perpetual market data. INTX Spot is intentionally excluded; the INTX WebSocket client requires API credentials and signs the initial subscription. Exchange and INTX clients do not share protocol models.
+The `intx` subtree separately implements direct Coinbase International Exchange perpetual market data. INTX Spot is intentionally excluded; the direct INTX WebSocket client requires API credentials and signs the initial subscription. Exchange and INTX clients do not share protocol models.
+
+The `advanced` subtree implements anonymous Coinbase Advanced Trade public market data for INTX perpetual products. It uses product IDs such as `BTC-PERP-INTX` and requires no API credentials. Its public REST and WebSocket schemas remain separate from both Exchange and direct INTX.
+
+```go
+restClient, err := advancedrest.NewClient(nil)
+if err != nil { return err }
+products, err := restClient.MarketData().ListPerpetualProducts(ctx)
+
+wsClient, err := advancedwebsocket.NewClient(nil)
+if err != nil { return err }
+if err := wsClient.Connect(ctx); err != nil { return err }
+defer wsClient.Close()
+if err := wsClient.Subscribe(ctx, advancedwebsocket.ChannelHeartbeats, nil); err != nil { return err }
+if err := wsClient.Subscribe(ctx, advancedwebsocket.ChannelLevel2, []string{"BTC-PERP-INTX"}); err != nil { return err }
+if err := wsClient.Subscribe(ctx, advancedwebsocket.ChannelMarketTrades, []string{"BTC-PERP-INTX"}); err != nil { return err }
+```
+
+`advanced/websocket.BookManager` applies absolute `level2` quantities, invalidates books on reconnect, sequence gaps, and slow consumers, and exposes synchronized BBO values without copying a full book.
 
 ```go
 restClient, err := intxrest.NewClient(nil)
