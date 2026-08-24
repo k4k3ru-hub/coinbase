@@ -7,14 +7,20 @@ import (
 	"os"
 
 	"github.com/k4k3ru-hub/cli/go"
+	intxmarketdata "github.com/k4k3ru-hub/coinbase/go/intx/marketdata"
+	intxrest "github.com/k4k3ru-hub/coinbase/go/intx/rest"
 	"github.com/k4k3ru-hub/coinbase/go/marketdata"
 	"github.com/k4k3ru-hub/coinbase/go/rest"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 type serverTimeGetter interface {
 	GetServerTime(context.Context) (*marketdata.Time, error)
+}
+
+type perpetualInstrumentLister interface {
+	ListPerpetualInstruments(context.Context) ([]intxmarketdata.Instrument, error)
 }
 
 func main() {
@@ -23,8 +29,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	intxRESTClient, err := intxrest.NewClient(nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
-	commandLine, err := newCLI(restClient.MarketData())
+	commandLine, err := newCLI(restClient.MarketData(), intxRESTClient.MarketData())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -35,9 +46,12 @@ func main() {
 	}
 }
 
-func newCLI(timeGetter serverTimeGetter) (*cli.CLI, error) {
+func newCLI(timeGetter serverTimeGetter, instrumentLister perpetualInstrumentLister) (*cli.CLI, error) {
 	if timeGetter == nil {
 		return nil, fmt.Errorf("failed to create coinbase exchange cli: time_getter=null")
+	}
+	if instrumentLister == nil {
+		return nil, fmt.Errorf("failed to create coinbase exchange cli: instrument_lister=null")
 	}
 
 	commandLine := cli.NewCLI(nil)
@@ -67,6 +81,30 @@ func newCLI(timeGetter serverTimeGetter) (*cli.CLI, error) {
 		return nil
 	})
 	if err := restCommand.AddCommand(timeCommand); err != nil {
+		return nil, fmt.Errorf("failed to create coinbase exchange cli: %w", err)
+	}
+
+	intxCommand := cli.NewCommand("intx")
+	intxCommand.SetUsage("Coinbase International Exchange perpetual market data commands.")
+	if err := commandLine.Root().AddCommand(intxCommand); err != nil {
+		return nil, fmt.Errorf("failed to create coinbase exchange cli: %w", err)
+	}
+
+	instrumentsCommand := cli.NewCommand("instruments")
+	instrumentsCommand.SetUsage("List Coinbase International Exchange perpetual instruments.")
+	instrumentsCommand.SetAction(func(ctx *cli.Context) error {
+		result, err := instrumentLister.ListPerpetualInstruments(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to run coinbase intx instruments command: %w", err)
+		}
+		encoder := json.NewEncoder(ctx.Output())
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(result); err != nil {
+			return fmt.Errorf("failed to run coinbase intx instruments command: failed to output result: %w", err)
+		}
+		return nil
+	})
+	if err := intxCommand.AddCommand(instrumentsCommand); err != nil {
 		return nil, fmt.Errorf("failed to create coinbase exchange cli: %w", err)
 	}
 

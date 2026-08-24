@@ -1,8 +1,37 @@
-# Coinbase Exchange SDK for Go
+# Coinbase Exchange and INTX SDK for Go
 
-Go client for **Coinbase Exchange API** public market data. This module does not use Coinbase Advanced Trade API and does not implement authentication, accounts, orders, the user channel, Direct Market Data, FIX, persistence, redistribution, or K4K3RU integration.
+Go client for **Coinbase Exchange API** public market data. The Exchange packages do not use Coinbase Advanced Trade API and do not implement authentication, accounts, orders, the user channel, Direct Market Data, FIX, persistence, redistribution, or K4K3RU integration.
 
 Module path: `github.com/k4k3ru-hub/coinbase/go`
+
+The `intx` subtree separately implements Coinbase International Exchange perpetual market data. INTX Spot is intentionally excluded; the INTX WebSocket client requires API credentials and signs the initial subscription. Exchange and INTX clients do not share protocol models.
+
+```go
+restClient, err := intxrest.NewClient(nil)
+if err != nil { return err }
+instruments, err := restClient.MarketData().ListPerpetualInstruments(ctx)
+
+wsClient, err := intxwebsocket.NewClient(
+    intxwebsocket.DefaultClientOption(intxwebsocket.Credentials{
+        Key: key, Secret: secret, Passphrase: passphrase,
+    }),
+)
+if err != nil { return err }
+if err := wsClient.Connect(ctx); err != nil { return err }
+defer wsClient.Close()
+err = wsClient.Subscribe(ctx,
+    []string{intxwebsocket.ChannelLevel1, intxwebsocket.ChannelMatch},
+    []string{"BTC-PERP"},
+)
+```
+
+INTX REST decimals accept either JSON strings or numbers and are retained without conversion through `float64`. WebSocket price and quantity fields remain the decimal strings published by INTX. The SDK does not translate symbols into K4K3RU canonical symbols and does not normalize quantities for downstream services.
+
+The CLI can list the currently available INTX perpetual instruments without API credentials:
+
+```sh
+go run ./cli intx instruments
+```
 
 ## Endpoints
 
