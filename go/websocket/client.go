@@ -11,7 +11,7 @@ import (
 	gorilla "github.com/gorilla/websocket"
 )
 
-const defaultQueueSize = 256
+const defaultQueueSize = 1024
 
 // Connection abstracts the underlying WebSocket implementation.
 type Connection interface {
@@ -63,6 +63,7 @@ type Client struct {
 // DefaultClientOption returns public production WebSocket defaults.
 //
 // Version:
+//   - 2026-08-25: Increased the default event queue capacity.
 //   - 2026-08-19: Added.
 func DefaultClientOption() *ClientOption {
 	return &ClientOption{EndpointURL: ProductionURL, Dialer: gorillaDialer{d: gorilla.DefaultDialer}, QueueSize: defaultQueueSize, ReadTimeout: 30 * time.Second, WriteTimeout: 5 * time.Second, PingPeriod: 15 * time.Second}
@@ -295,8 +296,8 @@ func (c *Client) readLoop(ctx context.Context, conn Connection) {
 		case <-ctx.Done():
 			return
 		default:
-			c.books.Reset()
-			c.report(fmt.Errorf("failed to route coinbase exchange websocket event: consumer=too_slow queue_size=%d", cap(c.events)))
+			c.sessionEnded(conn, fmt.Errorf("failed to route coinbase exchange websocket event: consumer=too_slow queue_size=%d", cap(c.events)))
+			return
 		}
 	}
 }

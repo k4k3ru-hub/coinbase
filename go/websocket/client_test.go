@@ -3,7 +3,9 @@ package websocket
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -137,6 +139,44 @@ func TestSessionEndRemainsObservableWhenErrorQueueIsFull(t *testing.T) {
 	}
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSlowConsumerTerminatesSession(t *testing.T) {
+	t.Parallel()
+	conn := newFakeConn()
+	c, err := NewClient(&ClientOption{EndpointURL: "ws://test", Dialer: fakeDialer{conn}, QueueSize: 1, PingPeriod: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 2; index++ {
+		conn.reads <- fakeRead{data: []byte(fmt.Sprintf(`{"type":"heartbeat","product_id":"BTC-USD","sequence":%d,"last_trade_id":2,"time":"x"}`, index))}
+	}
+	select {
+	case sessionErr := <-c.SessionEnds():
+		if sessionErr == nil || !strings.Contains(sessionErr.Error(), "consumer=too_slow queue_size=1") {
+			t.Fatalf("session error = %v", sessionErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("slow consumer did not terminate the session")
+	}
+	select {
+	case <-conn.closed:
+	case <-time.After(time.Second):
+		t.Fatal("slow consumer did not close the connection")
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDefaultClientOptionUsesExpandedQueue(t *testing.T) {
+	t.Parallel()
+	if got, want := DefaultClientOption().QueueSize, 1024; got != want {
+		t.Fatalf("queue size = %d, want %d", got, want)
 	}
 }
 
