@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/k4k3ru-hub/coinbase-exchange/go/internal/transport"
-	"github.com/k4k3ru-hub/coinbase-exchange/go/marketdata"
+	"github.com/k4k3ru-hub/coinbase/go/internal/transport"
+	"github.com/k4k3ru-hub/coinbase/go/marketdata"
 )
 
 const maxProductIDLength = 128

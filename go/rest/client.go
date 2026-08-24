@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/k4k3ru-hub/coinbase-exchange/go/internal/transport"
+	"github.com/k4k3ru-hub/coinbase/go/internal/transport"
 )
 
 const (

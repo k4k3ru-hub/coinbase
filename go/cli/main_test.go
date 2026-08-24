@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/k4k3ru-hub/coinbase-exchange/go/marketdata"
+	"github.com/k4k3ru-hub/coinbase/go/marketdata"
 )
 
 type fakeServerTimeGetter struct {

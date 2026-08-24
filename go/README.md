@@ -2,7 +2,7 @@
 
 Go client for **Coinbase Exchange API** public market data. This module does not use Coinbase Advanced Trade API and does not implement authentication, accounts, orders, the user channel, Direct Market Data, FIX, persistence, redistribution, or K4K3RU integration.
 
-Module path: `github.com/k4k3ru-hub/coinbase-exchange/go`
+Module path: `github.com/k4k3ru-hub/coinbase/go`
 
 ## Endpoints
 

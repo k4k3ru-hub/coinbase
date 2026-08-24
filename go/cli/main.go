@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/k4k3ru-hub/cli/go"
-	"github.com/k4k3ru-hub/coinbase-exchange/go/marketdata"
-	"github.com/k4k3ru-hub/coinbase-exchange/go/rest"
+	"github.com/k4k3ru-hub/coinbase/go/marketdata"
+	"github.com/k4k3ru-hub/coinbase/go/rest"
 )
 
 const version = "1.0.0"

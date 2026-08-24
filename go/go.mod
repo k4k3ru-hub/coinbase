@@ -1,4 +1,4 @@
-module github.com/k4k3ru-hub/coinbase-exchange/go
+module github.com/k4k3ru-hub/coinbase/go
 
 go 1.25.4
 

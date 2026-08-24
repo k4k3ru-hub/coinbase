@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/k4k3ru-hub/coinbase-exchange/go/marketdata"
+	"github.com/k4k3ru-hub/coinbase/go/marketdata"
 )
 
 func TestMarketDataOperations(t *testing.T) {
