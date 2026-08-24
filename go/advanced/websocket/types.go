@@ -87,8 +87,8 @@ type HeartbeatsEnvelope struct {
 
 // Heartbeat is one public feed heartbeat.
 type Heartbeat struct {
-	CurrentTime      string `json:"current_time"`
-	HeartbeatCounter string `json:"heartbeat_counter"`
+	CurrentTime      string          `json:"current_time"`
+	HeartbeatCounter json.RawMessage `json:"heartbeat_counter"`
 }
 
 // TickerEnvelope contains ticker batches.

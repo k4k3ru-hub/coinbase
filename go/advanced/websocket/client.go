@@ -46,19 +46,19 @@ type ClientOption struct {
 
 // Client manages one Advanced Trade public market-data session.
 type Client struct {
-	option        ClientOption
-	mu            sync.Mutex
-	writeMu       sync.Mutex
-	conn          Connection
-	events        chan Event
-	errs          chan error
-	ends          chan error
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	closed        bool
-	books         *BookManager
-	sequences     map[string]uint64
-	seenSequences map[string]bool
+	option           ClientOption
+	mu               sync.Mutex
+	writeMu          sync.Mutex
+	conn             Connection
+	events           chan Event
+	errs             chan error
+	ends             chan error
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	closed           bool
+	books            *BookManager
+	previousSequence uint64
+	seenSequence     bool
 }
 
 // DefaultClientOption returns anonymous production WebSocket defaults.
@@ -90,7 +90,7 @@ func NewClient(option *ClientOption) (*Client, error) {
 	if o.QueueSize < 0 {
 		return nil, fmt.Errorf("failed to create coinbase advanced websocket client: queue_size=out_of_range")
 	}
-	return &Client{option: o, events: make(chan Event, o.QueueSize), errs: make(chan error, 1), ends: make(chan error, 1), books: NewBookManager(), sequences: map[string]uint64{}, seenSequences: map[string]bool{}}, nil
+	return &Client{option: o, events: make(chan Event, o.QueueSize), errs: make(chan error, 1), ends: make(chan error, 1), books: NewBookManager()}, nil
 }
 
 // Connect opens a fresh Advanced Trade public market-data session.
@@ -120,8 +120,8 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.conn = conn
 	c.cancel = cancel
 	c.books.Reset()
-	c.sequences = map[string]uint64{}
-	c.seenSequences = map[string]bool{}
+	c.previousSequence = 0
+	c.seenSequence = false
 	conn.SetPongHandler(func(string) error { return conn.SetReadDeadline(time.Now().Add(c.option.ReadTimeout)) })
 	c.wg.Add(3)
 	go c.readLoop(sessionCtx, conn)
@@ -275,14 +275,12 @@ func (c *Client) readLoop(ctx context.Context, conn Connection) {
 			c.report(err)
 			continue
 		}
-		if c.seenSequences[event.Channel] && event.SequenceNum != c.sequences[event.Channel]+1 {
-			if event.Channel == ChannelLevel2 || event.Channel == ChannelLevel2Data {
-				c.books.Reset()
-			}
-			c.report(fmt.Errorf("failed to validate coinbase advanced websocket sequence: sequence=invalid channel=%q previous_sequence=%d sequence=%d", event.Channel, c.sequences[event.Channel], event.SequenceNum))
+		if c.seenSequence && event.SequenceNum != c.previousSequence+1 {
+			c.books.Reset()
+			c.report(fmt.Errorf("failed to validate coinbase advanced websocket sequence: sequence=invalid previous_sequence=%d sequence=%d", c.previousSequence, event.SequenceNum))
 		}
-		c.sequences[event.Channel] = event.SequenceNum
-		c.seenSequences[event.Channel] = true
+		c.previousSequence = event.SequenceNum
+		c.seenSequence = true
 		if err := c.books.Apply(event); err != nil {
 			c.report(err)
 			continue

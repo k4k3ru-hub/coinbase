@@ -29,3 +29,14 @@ func TestDecodeMarketTrades(t *testing.T) {
 		t.Fatalf("event = %#v", event)
 	}
 }
+
+func TestDecodeHeartbeatAcceptsNumericCounter(t *testing.T) {
+	event, err := DecodeEvent([]byte(`{"channel":"heartbeats","sequence_num":3,"events":[{"current_time":"2026-08-24T00:00:00Z","heartbeat_counter":42}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, ok := event.Value.(*HeartbeatsEnvelope)
+	if !ok || string(envelope.Events[0].HeartbeatCounter) != "42" {
+		t.Fatalf("event = %#v", event)
+	}
+}
