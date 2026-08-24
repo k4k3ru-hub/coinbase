@@ -1,10 +1,10 @@
-package coinbaseexchange
+package rest
 
 import "testing"
 
-func TestRESTCompositionRoot(t *testing.T) {
+func TestCompositionRoot(t *testing.T) {
 	t.Parallel()
-	client, err := NewRESTClient(nil)
+	client, err := NewClient(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

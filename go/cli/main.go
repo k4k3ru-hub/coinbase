@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/k4k3ru-hub/cli/go"
-	coinbaseexchange "github.com/k4k3ru-hub/coinbase-exchange/go"
 	"github.com/k4k3ru-hub/coinbase-exchange/go/marketdata"
+	"github.com/k4k3ru-hub/coinbase-exchange/go/rest"
 )
 
 const version = "1.0.0"
@@ -18,7 +18,7 @@ type serverTimeGetter interface {
 }
 
 func main() {
-	restClient, err := coinbaseexchange.NewRESTClient(nil)
+	restClient, err := rest.NewClient(nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
