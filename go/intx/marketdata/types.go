@@ -31,6 +31,7 @@ type Instrument struct {
 	ExecutionExchange     string           `json:"execution_exchange"`
 	UnderlyingType        string           `json:"underlying_type"`
 	FundingInterval       json.RawMessage  `json:"funding_interval"`
+	OpenInterest          Decimal          `json:"open_interest"`
 	PositionNotionalLimit Decimal          `json:"position_notional_limit"`
 	OpenInterestLimit     Decimal          `json:"open_interest_notional_limit"`
 	Quote                 *InstrumentQuote `json:"quote,omitempty"`

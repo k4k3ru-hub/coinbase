@@ -78,12 +78,13 @@ type Funding struct {
 // Risk is an INTX perpetual risk snapshot or update.
 type Risk struct {
 	Envelope
-	LimitUp         string `json:"limit_up"`
-	LimitDown       string `json:"limit_down"`
-	IndexPrice      string `json:"index_price"`
-	MarkPrice       string `json:"mark_price"`
-	SettlementPrice string `json:"settlement_price"`
-	OpenInterest    string `json:"open_interest"`
+	LimitUp             string `json:"limit_up"`
+	LimitDown           string `json:"limit_down"`
+	IndexPrice          string `json:"index_price"`
+	MarkPrice           string `json:"mark_price"`
+	SettlementPrice     string `json:"settlement_price"`
+	IndicativeOpenPrice string `json:"indicative_open_price"`
+	OpenInterest        string `json:"open_interest"`
 }
 
 // Instrument is an INTX WebSocket instrument snapshot or update.

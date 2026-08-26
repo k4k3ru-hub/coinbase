@@ -22,7 +22,7 @@ func TestListPerpetualInstrumentsFiltersSpotAndPreservesDecimals(t *testing.T) {
 		if r.URL.Path != "/api/v1/instruments" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`[{"instrument_id":1,"symbol":"BTC-PERP","type":"PERP","base_increment":0.000001,"quote_increment":"0.1","min_quantity":0.0001,"base_asset_multiplier":1},{"instrument_id":2,"symbol":"BTC-USDC","type":"SPOT"}]`))
+		_, _ = w.Write([]byte(`[{"instrument_id":1,"instrument_uuid":"97645486-8058-4d98-aa1e-5ab2685d09c8","symbol":"BTC-PERP","type":"PERP","base_asset_name":"BTC","quote_asset_name":"USDC","base_increment":0.000001,"quote_increment":"0.1","min_quantity":0.0001,"open_interest":100.25,"base_asset_multiplier":1,"quote":{"index_price":20001.45,"mark_price":"20000.6300","timestamp":"2023-11-07T05:31:56Z"}},{"instrument_id":2,"symbol":"BTC-USDC","type":"SPOT"}]`))
 	}))
 	defer server.Close()
 	client, err := NewClient(&ClientOption{BaseURL: server.URL, HTTPClient: server.Client()})
@@ -36,7 +36,7 @@ func TestListPerpetualInstrumentsFiltersSpotAndPreservesDecimals(t *testing.T) {
 	if len(instruments) != 1 {
 		t.Fatalf("len = %d, want 1", len(instruments))
 	}
-	if instruments[0].Symbol != "BTC-PERP" || instruments[0].BaseIncrement != "0.000001" || instruments[0].QuoteIncrement != "0.1" {
+	if instruments[0].Symbol != "BTC-PERP" || instruments[0].BaseAssetName != "BTC" || instruments[0].QuoteAssetName != "USDC" || instruments[0].BaseIncrement != "0.000001" || instruments[0].QuoteIncrement != "0.1" || instruments[0].OpenInterest != "100.25" || instruments[0].BaseAssetMultiplier != "1" || instruments[0].Quote == nil || instruments[0].Quote.IndexPrice != "20001.45" || instruments[0].Quote.MarkPrice != "20000.6300" || instruments[0].Quote.Timestamp != "2023-11-07T05:31:56Z" {
 		t.Fatalf("instrument = %#v", instruments[0])
 	}
 }

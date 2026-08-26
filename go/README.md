@@ -42,12 +42,28 @@ if err != nil { return err }
 if err := wsClient.Connect(ctx); err != nil { return err }
 defer wsClient.Close()
 err = wsClient.Subscribe(ctx,
-    []string{intxwebsocket.ChannelLevel1, intxwebsocket.ChannelMatch},
+    []string{intxwebsocket.ChannelLevel1, intxwebsocket.ChannelMatch, intxwebsocket.ChannelRisk},
     []string{"BTC-PERP"},
 )
 ```
 
 INTX REST decimals accept either JSON strings or numbers and are retained without conversion through `float64`. WebSocket price and quantity fields remain the decimal strings published by INTX. The SDK does not translate symbols into K4K3RU canonical symbols and does not normalize quantities for downstream services.
+
+For Open Interest state, use direct INTX REST `GET /api/v1/instruments` at
+startup and the authenticated INTX WebSocket `RISK` channel for subsequent
+snapshots and updates. REST instruments expose `open_interest`,
+`base_asset_multiplier`, base and quote asset names, and an embedded quote with
+mark price, index price, and quote timestamp. `RISK` publishes
+`open_interest`, mark price, index price, settlement price, venue event time,
+and sequence in the same event.
+
+The SDK preserves `open_interest` and `base_asset_multiplier` as raw decimal
+values. Consumers may treat Open Interest as contract quantity and derive base
+asset quantity as `open_interest * base_asset_multiplier`; any such
+normalization and notional conversion belongs to the consuming service. The
+Advanced Trade public product endpoint remains an anonymous snapshot fallback,
+but its public REST responses may be cached and do not provide an Open
+Interest-specific event timestamp.
 
 Direct INTX REST funding history uses `GET /api/v1/instruments/{instrument}/funding`. It returns final funding rates with the mark price and event time, supports `result_limit` up to 100 and `result_offset`, and is suitable for startup backfill and WebSocket-gap reconciliation.
 
