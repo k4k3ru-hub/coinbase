@@ -28,6 +28,10 @@ if err := wsClient.Subscribe(ctx, advancedwebsocket.ChannelMarketTrades, []strin
 restClient, err := intxrest.NewClient(nil)
 if err != nil { return err }
 instruments, err := restClient.MarketData().ListPerpetualInstruments(ctx)
+fundingRates, err := restClient.MarketData().GetHistoricalFundingRates(ctx, intxrest.FundingHistoryParams{
+    Instrument:  "BTC-PERP",
+    ResultLimit: 100,
+})
 
 wsClient, err := intxwebsocket.NewClient(
     intxwebsocket.DefaultClientOption(intxwebsocket.Credentials{
@@ -44,6 +48,8 @@ err = wsClient.Subscribe(ctx,
 ```
 
 INTX REST decimals accept either JSON strings or numbers and are retained without conversion through `float64`. WebSocket price and quantity fields remain the decimal strings published by INTX. The SDK does not translate symbols into K4K3RU canonical symbols and does not normalize quantities for downstream services.
+
+Direct INTX REST funding history uses `GET /api/v1/instruments/{instrument}/funding`. It returns final funding rates with the mark price and event time, supports `result_limit` up to 100 and `result_offset`, and is suitable for startup backfill and WebSocket-gap reconciliation.
 
 The CLI can list the currently available INTX perpetual instruments without API credentials:
 

@@ -2,12 +2,14 @@
 package rest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/k4k3ru-hub/coinbase/go/intx/marketdata"
@@ -17,6 +19,7 @@ const (
 	ProductionURL                 = "https://api.international.coinbase.com"
 	SandboxURL                    = "https://api-n5e1.coinbase.com"
 	defaultMaxResponseBytes int64 = 8 << 20
+	maxInstrumentLength           = 128
 )
 
 // HTTPClient executes HTTP requests.
@@ -41,6 +44,13 @@ type Client struct {
 
 // MarketDataClient exposes public INTX perpetual market-data operations.
 type MarketDataClient struct{ client *Client }
+
+// FundingHistoryParams configures an INTX historical funding-rate request.
+type FundingHistoryParams struct {
+	Instrument   string
+	ResultLimit  int
+	ResultOffset int
+}
 
 // DefaultClientOption returns production REST defaults.
 //
@@ -141,4 +151,104 @@ func (c *MarketDataClient) ListPerpetualInstruments(ctx context.Context) ([]mark
 		}
 	}
 	return perpetuals, nil
+}
+
+// GetHistoricalFundingRates returns final funding rates for an INTX perpetual instrument.
+//
+// Parameters:
+//   - ctx: request context
+//   - params: instrument and pagination parameters
+//
+// Returns:
+//   - Final funding-rate records.
+//
+// Version:
+//   - 2026-08-26: Added.
+func (c *MarketDataClient) GetHistoricalFundingRates(ctx context.Context, params FundingHistoryParams) ([]marketdata.FundingRate, error) {
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: client=null")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: context=null")
+	}
+	if params.Instrument == "" {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: instrument=empty")
+	}
+	if len(params.Instrument) > maxInstrumentLength {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: instrument=too_long actual_length=%d max_length=%d", len(params.Instrument), maxInstrumentLength)
+	}
+	if strings.TrimSpace(params.Instrument) != params.Instrument {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: instrument=invalid")
+	}
+	if params.ResultLimit < 0 || params.ResultLimit > 100 {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: result_limit=out_of_range min_value=0 max_value=100")
+	}
+	if params.ResultOffset < 0 {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: result_offset=out_of_range min_value=0")
+	}
+	query := url.Values{}
+	if params.ResultLimit > 0 {
+		query.Set("result_limit", strconv.Itoa(params.ResultLimit))
+	}
+	if params.ResultOffset > 0 {
+		query.Set("result_offset", strconv.Itoa(params.ResultOffset))
+	}
+	requestURL := c.client.baseURL + "/api/v1/instruments/" + url.PathEscape(params.Instrument) + "/funding"
+	if len(query) > 0 {
+		requestURL += "?" + query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: %w", err)
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: response=null")
+	}
+	if resp.Body == nil {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: response_body=null")
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, c.client.maxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: failed to read response body: %w", err)
+	}
+	if int64(len(body)) > c.client.maxResponseBytes {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: response_body=too_long max_bytes=%d", c.client.maxResponseBytes)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: unexpected HTTP status: status_code=%d", resp.StatusCode)
+	}
+	rates, err := decodeFundingRates(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get coinbase intx historical funding rates: failed to decode response: %w", err)
+	}
+	return rates, nil
+}
+
+func decodeFundingRates(body []byte) ([]marketdata.FundingRate, error) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("response_body=empty")
+	}
+	if trimmed[0] == '[' {
+		var rates []marketdata.FundingRate
+		decoder := json.NewDecoder(bytes.NewReader(trimmed))
+		decoder.UseNumber()
+		if err := decoder.Decode(&rates); err != nil {
+			return nil, err
+		}
+		return rates, nil
+	}
+	var rate marketdata.FundingRate
+	decoder := json.NewDecoder(bytes.NewReader(trimmed))
+	decoder.UseNumber()
+	if err := decoder.Decode(&rate); err != nil {
+		return nil, err
+	}
+	return []marketdata.FundingRate{rate}, nil
 }

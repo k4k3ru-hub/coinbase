@@ -49,6 +49,14 @@ type InstrumentQuote struct {
 	Timestamp    string  `json:"timestamp"`
 }
 
+// FundingRate is one final INTX funding-rate record.
+type FundingRate struct {
+	InstrumentID json.RawMessage `json:"instrument_id"`
+	FundingRate  Decimal         `json:"funding_rate"`
+	MarkPrice    Decimal         `json:"mark_price"`
+	EventTime    string          `json:"event_time"`
+}
+
 // Decimal preserves a decimal value exactly as received, accepting JSON strings and numbers.
 type Decimal string
 
