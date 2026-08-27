@@ -41,9 +41,10 @@ func TestListPerpetualInstrumentsFiltersSpotAndPreservesDecimals(t *testing.T) {
 	}
 }
 
-// TestGetHistoricalFundingRatesBuildsPaginationAndPreservesDecimals verifies the complete funding payload.
+// TestGetHistoricalFundingRatesBuildsPaginationAndPreservesDecimals verifies the production envelope and complete funding payload.
 //
 // Version:
+//   - 2026-08-27: Used the production pagination and results envelope.
 //   - 2026-08-26: Added.
 func TestGetHistoricalFundingRatesBuildsPaginationAndPreservesDecimals(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +54,7 @@ func TestGetHistoricalFundingRatesBuildsPaginationAndPreservesDecimals(t *testin
 		if r.URL.Query().Get("result_limit") != "100" || r.URL.Query().Get("result_offset") != "50" {
 			t.Errorf("query = %v", r.URL.Query())
 		}
-		_, _ = w.Write([]byte(`[{"instrument_id":"14thr7ft-1-0","funding_rate":0.0001543,"mark_price":"20000.6300","event_time":"2023-03-16T23:59:53.000Z"}]`))
+		_, _ = w.Write([]byte(`{"pagination":{"result_limit":100,"result_offset":50},"results":[{"instrument_id":"14thr7ft-1-0","funding_rate":0.0001543,"mark_price":"20000.6300","event_time":"2023-03-16T23:59:53.000Z"}]}`))
 	}))
 	defer server.Close()
 	client, err := NewClient(&ClientOption{BaseURL: server.URL, HTTPClient: server.Client()})
@@ -69,6 +70,28 @@ func TestGetHistoricalFundingRatesBuildsPaginationAndPreservesDecimals(t *testin
 		t.Fatalf("GetHistoricalFundingRates() error = %v", err)
 	}
 	if len(rates) != 1 || string(rates[0].InstrumentID) != `"14thr7ft-1-0"` || rates[0].FundingRate != "0.0001543" || rates[0].MarkPrice != "20000.6300" || rates[0].EventTime != "2023-03-16T23:59:53.000Z" {
+		t.Fatalf("rates = %#v", rates)
+	}
+}
+
+// TestGetHistoricalFundingRatesAcceptsLegacyArrayResponse verifies array response compatibility.
+//
+// Version:
+//   - 2026-08-27: Added.
+func TestGetHistoricalFundingRatesAcceptsLegacyArrayResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[{"instrument_id":"14thr7ft-1-0","funding_rate":"0.0001","mark_price":"20000.63","event_time":"2023-03-16T23:59:53Z"}]`))
+	}))
+	defer server.Close()
+	client, err := NewClient(&ClientOption{BaseURL: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	rates, err := client.MarketData().GetHistoricalFundingRates(context.Background(), FundingHistoryParams{Instrument: "BTC-PERP"})
+	if err != nil {
+		t.Fatalf("GetHistoricalFundingRates() error = %v", err)
+	}
+	if len(rates) != 1 || rates[0].EventTime != "2023-03-16T23:59:53Z" {
 		t.Fatalf("rates = %#v", rates)
 	}
 }

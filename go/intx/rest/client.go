@@ -163,6 +163,7 @@ func (c *MarketDataClient) ListPerpetualInstruments(ctx context.Context) ([]mark
 //   - Final funding-rate records.
 //
 // Version:
+//   - 2026-08-27: Decoded the production pagination and results envelope.
 //   - 2026-08-26: Added.
 func (c *MarketDataClient) GetHistoricalFundingRates(ctx context.Context, params FundingHistoryParams) ([]marketdata.FundingRate, error) {
 	if c == nil || c.client == nil {
@@ -238,6 +239,21 @@ func decodeFundingRates(body []byte) ([]marketdata.FundingRate, error) {
 	if trimmed[0] == '[' {
 		var rates []marketdata.FundingRate
 		decoder := json.NewDecoder(bytes.NewReader(trimmed))
+		decoder.UseNumber()
+		if err := decoder.Decode(&rates); err != nil {
+			return nil, err
+		}
+		return rates, nil
+	}
+	var object map[string]json.RawMessage
+	objectDecoder := json.NewDecoder(bytes.NewReader(trimmed))
+	objectDecoder.UseNumber()
+	if err := objectDecoder.Decode(&object); err != nil {
+		return nil, err
+	}
+	if results, ok := object["results"]; ok {
+		var rates []marketdata.FundingRate
+		decoder := json.NewDecoder(bytes.NewReader(results))
 		decoder.UseNumber()
 		if err := decoder.Decode(&rates); err != nil {
 			return nil, err
