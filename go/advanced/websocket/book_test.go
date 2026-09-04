@@ -26,6 +26,15 @@ func TestBookManagerSnapshotAndUpdate(t *testing.T) {
 	if !ok || bbo.BidPrice != "100.5" || bbo.BidSize != "4" || bbo.AskPrice != "102" {
 		t.Fatalf("bbo = %#v, %v", bbo, ok)
 	}
+	book, ok := manager.Snapshot("BTC-PERP-INTX")
+	if !ok || book.Bids["100.5"] != "4" || book.Asks["102"] != "5" || book.Generation == 0 {
+		t.Fatalf("Snapshot() = %#v, %v", book, ok)
+	}
+	book.Bids["100.5"] = "1"
+	book, _ = manager.Snapshot("BTC-PERP-INTX")
+	if book.Bids["100.5"] != "4" {
+		t.Fatal("Snapshot() returned shared bid levels")
+	}
 }
 
 func TestBookManagerRejectsUpdateBeforeSnapshot(t *testing.T) {

@@ -15,6 +15,14 @@ type BBO struct {
 	AskSize    string
 	Generation uint64
 }
+
+// Book is an immutable copy of one synchronized Advanced Trade product book.
+type Book struct {
+	ProductID  string
+	Bids       map[string]string
+	Asks       map[string]string
+	Generation uint64
+}
 type book struct {
 	bids       map[string]string
 	asks       map[string]string
@@ -124,6 +132,42 @@ func (m *BookManager) BestBidOffer(productID string) (BBO, bool) {
 		return BBO{}, false
 	}
 	return BBO{ProductID: productID, BidPrice: current.bestBid, BidSize: current.bids[current.bestBid], AskPrice: current.bestAsk, AskSize: current.asks[current.bestAsk], Generation: current.generation}, true
+}
+
+// Snapshot returns a detached copy of a synchronized order book.
+//
+// Parameters:
+//   - productID: Advanced Trade product identifier.
+//
+// Returns:
+//   - Detached order book.
+//   - True when a synchronized book is available.
+//
+// Version:
+//   - 2026-09-04: Added.
+func (m *BookManager) Snapshot(productID string) (Book, bool) {
+	if m == nil {
+		return Book{}, false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	current := m.books[productID]
+	if current == nil || current.bestBid == "" || current.bestAsk == "" {
+		return Book{}, false
+	}
+	return Book{
+		ProductID: productID,
+		Bids:      copyLevels(current.bids),
+		Asks:      copyLevels(current.asks), Generation: current.generation,
+	}, true
+}
+
+func copyLevels(levels map[string]string) map[string]string {
+	result := make(map[string]string, len(levels))
+	for price, quantity := range levels {
+		result[price] = quantity
+	}
+	return result
 }
 
 func updateLevel(levels map[string]string, price, quantity, current string, highest bool) (string, error) {
