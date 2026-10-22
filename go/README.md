@@ -146,3 +146,10 @@ This is an engineering summary, not legal advice. Confirm current terms, data pa
 ## Testing
 
 Unit tests use `httptest.Server` and injected fake WebSocket connections. They do not contact Coinbase or run live integration tests during normal `go test ./...` execution.
+
+## Go toolchain
+
+Development and verification use Go 1.27.3. The module minimum Go version is
+unchanged. The `toolchain` directive selects Go when working in this module;
+consuming applications must select a patched Go toolchain and rebuild to receive
+TLS security fixes.
